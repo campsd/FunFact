@@ -189,12 +189,36 @@ def factorize(
         else:
             return False
 
+    hc = []
+    '''define plugin for historic convergence data'''
+    @gradient_descent_plugin(every=1)
+    def historic_convergence(state: GradientDescentState):
+        # TODO: use external validation set
+        loss_val = ab.to_numpy(
+            loss(fac(), target, sum_vec=False, vectorized_along_last=append)
+        )
+        penalty_val = ab.to_numpy(
+            fac.penalty(sum_leafs=True, sum_vec=False)
+        )
+
+        for i, lp in enumerate(zip(loss_val, penalty_val)):
+            hc.append(
+                dict(
+                    step=state.step,
+                    vec=i,
+                    loss=lp[0],
+                    penalty=lp[1],
+                    loss_and_penalty=lp[0] + penalty_weight * lp[1]
+                )
+            )
+
     '''run the gradient descent loop'''
     gradient_descent(
         lambda: loss_and_grad(fac, target), opt, max_steps, exit_condition,
         plugins=plugins + [
             save_best,
-            convergence_check
+            convergence_check,
+            historic_convergence
         ]
     )
 
@@ -206,7 +230,7 @@ def factorize(
             best_factors,
             Factorization.from_tsrex(tsrex, dtype=dtype),
             np.argmin(best_loss), append
-        )
+        ), hc
     else:
         if isinstance(returns, int):
             instances = np.argsort(best_loss)[:returns]
@@ -218,4 +242,4 @@ def factorize(
                 Factorization.from_tsrex(tsrex, dtype=dtype),
                 i, append
             ) for i in instances
-        ]
+        ], hc
